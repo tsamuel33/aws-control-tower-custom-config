@@ -1,0 +1,24 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  This template creates an OIDC provider for use by GitHub Actions
+
+Mappings:
+  GitHub:
+    Details:
+      Thumbprint: 6938fd4d98bab03faadb97b34396831e3780aea1
+
+Resources:
+  GitHubActionsOIDC:
+    Type: AWS::IAM::OIDCProvider
+    Properties: 
+      ClientIdList: 
+        - sts.amazonaws.com
+      ThumbprintList: 
+        - !FindInMap [GitHub, Details, Thumbprint]
+      Url: https://token.actions.githubusercontent.com
+
+Outputs:
+  GitHubActionsOIDCArn:
+    Value: !Ref GitHubActionsOIDC
+    Export:
+      Name: GitHubActionsOIDCArn

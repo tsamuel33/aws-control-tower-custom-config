@@ -45,5 +45,5 @@ Resources:
                   - kms:ReEncrypt*
                   - kms:GenerateDataKey*
                 Resource:
-                  - !Sub "arn:aws:s3:::custom-ct-test-${AWS::AccountId}-${AWS::Region}/custom-control-tower-configuration.zip"
+                  - !Sub "arn:aws:s3:::custom-control-tower-configuration-${AWS::AccountId}-${AWS::Region}/custom-control-tower-configuration.zip"
                   - !Ref ControlTowerCustomKmsKeyArn

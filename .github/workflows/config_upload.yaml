@@ -28,4 +28,4 @@ jobs:
           aws-region: us-east-1
       - name: Upload configuration
         run: |
-          aws s3 cp /tmp/custom-control-tower-configuration.zip s3://custom-ct-test-${{ secrets.AWS_MASTER_ACCOUNT_NUMBER }}-us-east-1/custom-control-tower-configuration.zip
+          aws s3 cp /tmp/custom-control-tower-configuration.zip s3://custom-control-tower-configuration-${{ secrets.AWS_MASTER_ACCOUNT_NUMBER }}-us-east-1/custom-control-tower-configuration.zip

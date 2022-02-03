@@ -12,14 +12,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-      - name: Example
+      - name: Zip files
         run: |
-          pwd
-          ls
-      # - name: Zip files
-      #   run: |
-      #     cd configuration/
-      #     zip -r /tmp/custom-control-tower-configuration.zip .
+          cd configuration/
+          zip -r /tmp/custom-control-tower-configuration.zip .
+          ls /tmp
       # - name: Configure AWS credentials
       #   uses: aws-actions/configure-aws-credentials@v1
       #   with:

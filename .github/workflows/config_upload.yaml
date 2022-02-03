@@ -1,0 +1,31 @@
+name: Upload Custom Control Tower Config to S3
+on:
+  push:
+    # paths:
+    #   - 'configuration/**'
+    # branches:
+    #   - main
+
+jobs:
+  Upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Example
+        run: |
+          pwd
+          ls
+      # - name: Zip files
+      #   run: |
+      #     cd configuration/
+      #     zip -r /tmp/custom-control-tower-configuration.zip .
+      # - name: Configure AWS credentials
+      #   uses: aws-actions/configure-aws-credentials@v1
+      #   with:
+      #     role-to-assume: arn:aws:iam::${{ inputs.account-number }}:role/managed/GALocalSecurityPipelineAssumedRole
+      #     role-session-name: GASession
+      #     aws-region: ${{ env.AWS_REGION }}
+      # - name: Upload configuration
+      #   run: |
+      #     aws s3 cp /tmp/custom-control-tower-configuration.zip s3://custom-control-tower-configuration-$AWS_MASTER_ACCOUNT_NUMBER-$AWS_DEFAULT_REGION/custom-control-tower-configuration.zip

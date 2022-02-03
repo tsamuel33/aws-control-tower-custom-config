@@ -16,13 +16,12 @@ jobs:
         run: |
           cd configuration/
           zip -r /tmp/custom-control-tower-configuration.zip .
-          ls /tmp
-      # - name: Configure AWS credentials
-      #   uses: aws-actions/configure-aws-credentials@v1
-      #   with:
-      #     role-to-assume: arn:aws:iam::${{ inputs.account-number }}:role/managed/GALocalSecurityPipelineAssumedRole
-      #     role-session-name: GASession
-      #     aws-region: ${{ env.AWS_REGION }}
-      # - name: Upload configuration
-      #   run: |
-      #     aws s3 cp /tmp/custom-control-tower-configuration.zip s3://custom-control-tower-configuration-$AWS_MASTER_ACCOUNT_NUMBER-$AWS_DEFAULT_REGION/custom-control-tower-configuration.zip
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_MASTER_ACCOUNT_NUMBER }}:role/managed/CustomControlTowerConfigurationRole
+          role-session-name: CustomCTSession
+          aws-region: us-east-1
+      - name: Upload configuration
+        run: |
+          aws s3 cp /tmp/custom-control-tower-configuration.zip s3://custom-ct-test-${{ secrets.AWS_MASTER_ACCOUNT_NUMBER }}-us-east-1/custom-control-tower-configuration.zip

@@ -1,0 +1,49 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  This template creates an IAM role for automated upload of updates to
+  Custom Control Tower configuration
+Parameters:
+  GitHubOrgName:
+    Type: String
+    Default: tsamuel33
+    Description:  Name of the GitHub organization in which the repo resides
+  GitHubRepoName:
+    Type: String
+    Description: Name of the app's GitHub repo
+  ControlTowerCustomKmsKeyArn:
+    Type: String
+    Description: ARN of the KMS key used to encrypt the Custom Control Tower S3 bucket
+
+Resources:
+  CustomControlTowerConfigurationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: CustomControlTowerConfigurationRole
+      Path: /managed/
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !ImportValue GitHubActionsOIDCArn
+            Action: "sts:AssumeRoleWithWebIdentity"
+            Condition:
+              ForAnyValue:StringLike:
+                token.actions.githubusercontent.com:sub:
+                  - !Sub "repo:${GitHubOrgName}/${GitHubRepoName}:ref:refs/heads/main"
+      Policies:
+        - PolicyName: InlineCustomControlTowerConfigurationRolePolicy
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - kms:Decrypt
+                  - kms:Encrypt
+                  - kms:DescribeKey
+                  - kms:ReEncrypt*
+                  - kms:GenerateDataKey*
+                Resource:
+                  - !Sub "arn:aws:s3:::custom-ct-test-${AWS::AccountId}-${AWS::Region}/custom-control-tower-configuration.zip"
+                  - !Ref ControlTowerCustomKmsKeyArn

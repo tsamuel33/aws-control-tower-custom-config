@@ -19,7 +19,7 @@ Resources:
     Type: "AWS::SSM::Parameter"
     Properties:
       Description: APP ID for the account
-      Name: /LG/core/ApplicationId
+      Name: /LG/cores/ApplicationId
       Type: String
       Value: !Ref ApplicationId
   EnvironmentTypeParam:

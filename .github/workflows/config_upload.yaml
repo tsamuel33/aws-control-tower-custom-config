@@ -14,10 +14,12 @@ jobs:
   Test:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v2
       - name: Test
         uses: stelligent/cfn_nag@master
-        # with:
-        #   input_path: ./configuration/templates
+        with:
+          input_path: configuration/templates
       - name: Post run
         run: |
           pwd

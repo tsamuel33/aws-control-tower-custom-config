@@ -1,0 +1,148 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Manages Key Management Service (KMS)'
+
+Parameters:
+  OrgID:
+    Type: 'String'
+    Description: >
+      The Amazon Organizations ID for AWS Landing Zone.
+    AllowedPattern: '^o-[a-z0-9]{10,32}$'
+    ConstraintDescription: 'Requires o- followed by from 10 to 32 lower-case letters or digits.'
+  OrgMasterAccountId:
+    Type: 'String'
+    MinLength: 12
+    MaxLength: 12
+    Description: >
+      The AccountId for the Master AWS Organizations Account.
+  SecurityAccountId:
+    Type: 'String'
+    MinLength: 12
+    MaxLength: 12
+    Description: >
+      The AccountId for the Core Security in AWS Organizations Landing Zone.
+  SharedServicesAccountId:
+    Type: 'String'
+    MinLength: 12
+    MaxLength: 12
+    Description: >
+      The AccountId for the Core Shared Services in AWS Organizations Landing Zone.
+  LogArchiveAccountId:
+    Type: 'String'
+    MinLength: 12
+    MaxLength: 12
+    Description: >
+      The AccountId for the Core Log Archive in AWS Organizations Landing Zone.
+  ServerSideEncryptionAlgorithm:
+    Type: 'String'
+    Default: 'aws:kms'
+    Description: >
+      The encryption algorithm used for S3 server-side encryption.
+    AllowedValues:
+    - 'aws:kms'
+  AppId:
+    Type: 'String'
+    MinLength: 7
+    MaxLength: 38
+    AllowedPattern: '^[a-z0-9]{3,30}-(dev|test|staging|prod)$'
+    ConstraintDescription: 'Must contain from 3 to 30 lower-case letters or digits followed by a hyphen and dev, test, staging, or prod.'
+  AppEnvironment:
+    Type: 'String'
+    AllowedValues:
+    - dev
+    - test
+    - staging
+    - prod
+  AppDefaultVpcId:
+    Type: 'String'
+    Description: The VPC ID where to run the application.
+
+Conditions:
+  isDev: !Equals [!Ref 'AppEnvironment', 'dev']
+  isTest: !Equals [!Ref 'AppEnvironment', 'test']
+  isStaging: !Equals [!Ref 'AppEnvironment', 'staging']
+  isProd: !Equals [!Ref 'AppEnvironment', 'prod']
+
+Resources:
+  GeneralPurposeEncryptionKey:
+    Type: 'AWS::KMS::Key'
+    Properties:
+      Description: 'Managed General Purpose Encryption Key'
+      Enabled: true
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+        - Sid: 'Enable IAM permissions only for administration of the key'
+          Effect: Allow
+          Principal:
+            AWS:
+            - !Sub "arn:${AWS::Partition}:iam::${OrgMasterAccountId}:root"
+            - !Sub "arn:${AWS::Partition}:iam::${OrgMasterAccountId}:role/Administrator"
+            - !Sub "arn:${AWS::Partition}:iam::${OrgMasterAccountId}:role/CustomControlTowerDeploymentLambdaRole"
+            - !Sub 'arn:${AWS::Partition}:iam::${OrgMasterAccountId}:role/CustomControlTowerStateMachineLambdaRole'
+            - !Sub "arn:${AWS::Partition}:iam::${OrgMasterAccountId}:role/CustomControlTowerCodePipelineRole"
+            - !Sub "arn:${AWS::Partition}:iam::${OrgMasterAccountId}:role/service-role/AWSControlTowerStackSetRole"
+            - !Sub "arn:${AWS::Partition}:iam::${SecurityAccountId}:root"
+            - !Sub "arn:${AWS::Partition}:iam::${SecurityAccountId}:role/Administrator"
+            - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:root"
+            - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/Administrator"
+            - !Sub "arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-controltower-AdministratorExecutionRole"
+          Action:
+          - kms:CreateAlias
+          - kms:CreateGrant
+          - kms:CreateKey
+          - kms:DescribeKey
+          - kms:EnableKey
+          - kms:EnableKeyRotation
+          - kms:ListAliases
+          - kms:ListGrants
+          - kms:ListKeyPolicies
+          - kms:ListKeys
+          - kms:ListResourceTags
+          - kms:ListRetirableGrants
+          - kms:PutKeyPolicy
+          - kms:UpdateAlias
+          - kms:UpdateKeyDescription
+          - kms:RevokeGrant
+          - kms:DisableKey
+          - kms:DisableKeyRotation
+          - kms:GetKeyPolicy
+          - kms:GetKeyRotationStatus
+          - kms:DeleteAlias
+          - kms:TagResource
+          - kms:UntagResource
+          - kms:ListResourceTags
+          - kms:ScheduleKeyDeletion
+          - kms:CancelKeyDeletion
+          Resource: '*'
+        - Sid: 'Allow use of the key by the principals on the account'
+          Effect: Allow
+          Principal: '*'
+          Action:
+          - kms:Encrypt
+          - kms:Decrypt
+          - kms:ReEncryptTo
+          - kms:ReEncryptFrom
+          - kms:GenerateDataKey
+          - kms:GenerateDataKeyWithoutPlaintext
+          - kms:DescribeKey
+          Resource: '*'
+          Condition:
+            StringEquals:
+              "kms:CallerAccount": !Sub ${AWS::AccountId}
+      Tags:
+        - Key: "secops:tags:managed_by"
+          Value: "AWS Managed Security Pipeline"
+
+  GeneralPurposeEncryptionKeyAlias:
+    Type: 'AWS::KMS::Alias'
+    Properties:
+      TargetKeyId: !Ref GeneralPurposeEncryptionKey
+      AliasName: 'alias/GeneralPurposeEncryptionKey'
+
+Outputs:
+  GeneralPurposeEncryptionKeyArn:
+    Value: !GetAtt 'GeneralPurposeEncryptionKey.Arn'
+    Export:
+      Name: 'GeneralPurposeEncryptionKeyArn'

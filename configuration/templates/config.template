@@ -1,0 +1,82 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Manages AWS Config
+
+Parameters:
+  OrgID:
+    Type: 'String'
+    Description: >
+      The Amazon Organizations ID for AWS Landing Zone.
+    AllowedPattern: '^o-[a-z0-9]{10,32}$'
+    ConstraintDescription: 'Requires o- followed by from 10 to 32 lower-case letters or digits.'
+  OrgMasterAccountId:
+    Type: 'String'
+    MinLength: 12
+    MaxLength: 12
+    Description: >
+      The AccountId for the Master AWS Organizations Account.
+  SecurityAccountId:
+    Type: 'String'
+    MinLength: 12
+    MaxLength: 12
+    Description: >
+      The AccountId for the Core Security in AWS Organizations Landing Zone.
+  SharedServicesAccountId:
+    Type: 'String'
+    MinLength: 12
+    MaxLength: 12
+    Description: >
+      The AccountId for the Core Shared Services in AWS Organizations Landing Zone.
+  LogArchiveAccountId:
+    Type: 'String'
+    MinLength: 12
+    MaxLength: 12
+    Description: >
+      The AccountId for the Core Log Archive in AWS Organizations Landing Zone.
+  ServerSideEncryptionAlgorithm:
+    Type: 'String'
+    Default: 'aws:kms'
+    Description: >
+      The encryption algorithm used for S3 server-side encryption.
+    AllowedValues:
+    - 'aws:kms'
+  AppId:
+    Type: 'String'
+    MinLength: 7
+    MaxLength: 38
+    AllowedPattern: '^[a-z0-9]{3,30}-(dev|test|staging|prod)$'
+    ConstraintDescription: 'Must contain from 3 to 30 lower-case letters or digits followed by a hyphen and dev, test, staging, or prod.'
+  AppEnvironment:
+    Type: 'String'
+    AllowedValues:
+    - dev
+    - test
+    - staging
+    - prod
+  AppDefaultVpcId:
+    Type: 'String'
+    Description: The VPC ID where to run the application.
+
+Conditions:
+  isDev: !Equals [!Ref 'AppEnvironment', 'dev']
+  isTest: !Equals [!Ref 'AppEnvironment', 'test']
+  isStaging: !Equals [!Ref 'AppEnvironment', 'staging']
+  isProd: !Equals [!Ref 'AppEnvironment', 'prod']
+
+Resources:
+  # ------------------------------------------------------------------
+  # Require all security-related objects to be managed by the pipeline
+  # ------------------------------------------------------------------
+  CheckForUnmanagedSecurityObjects:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: 'InfoSec-Unmanaged-Security-Object'
+      InputParameters:
+        tag1Key: 'secops:tags:managed_by'
+        tag1Value: 'AWS Managed Security Pipeline'
+      Scope:
+        ComplianceResourceTypes:
+        - 'AWS::EC2::SecurityGroup'
+      Source:
+        Owner: AWS
+        SourceIdentifier: REQUIRED_TAGS

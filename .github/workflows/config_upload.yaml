@@ -22,6 +22,7 @@ jobs:
         run: |
           pwd
           ls
+          cat cfn_nag.out
 
   # Upload:
   #   runs-on: ubuntu-latest

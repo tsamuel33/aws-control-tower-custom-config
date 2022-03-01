@@ -16,7 +16,7 @@ jobs:
       #   uses: actions/checkout@v2
       - name: Scan CloudFormation Templates
         run: |
-          apt-get install rvm
+          sudo apt-get install rvm
           which rvm
           #gem install cfn-nag
           #cfn_nag_scan --input-path=configuration/templates

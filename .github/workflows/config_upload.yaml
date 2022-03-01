@@ -17,7 +17,7 @@ jobs:
       - name: Test
         uses: stelligent/cfn_nag@master
         with:
-          input_path: configuration/templates
+          input_path: ./configuration/templates
   # Upload:
   #   runs-on: ubuntu-latest
   #   steps:

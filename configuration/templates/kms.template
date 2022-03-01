@@ -66,11 +66,11 @@ Conditions:
 Resources:
   GeneralPurposeEncryptionKey:
     Type: 'AWS::KMS::Key'
-    # Metadata:
-    #   cfn_nag:
-    #     rules_to_suppress:
-    #       - id: F76
-    #         reason: Allow use of key by everyone in the account
+    Metadata:
+      cfn_nag:
+        rules_to_suppress:
+          - id: F76
+            reason: Allow use of key by everyone in the account
     Properties:
       Description: 'Managed General Purpose Encryption Key'
       Enabled: true

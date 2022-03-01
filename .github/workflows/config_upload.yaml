@@ -16,10 +16,9 @@ jobs:
         uses: actions/checkout@v2
       - name: Scan CloudFormation Templates
         run: |
+          which rvm
           #gem install cfn-nag
-          brew install ruby brew-gem
-          brew gem install cfn-nag
-          cfn_nag_scan --input-path=configuration/templates
+          #cfn_nag_scan --input-path=configuration/templates
 
   Upload:
     needs: Test

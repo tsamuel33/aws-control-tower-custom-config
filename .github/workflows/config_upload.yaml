@@ -1,8 +1,8 @@
 name: Upload Custom Control Tower Config to S3
 on:
   push:
-    paths:
-      - 'configuration/**'
+    # paths:
+    #   - 'configuration/**'
 
 permissions:
   contents: read

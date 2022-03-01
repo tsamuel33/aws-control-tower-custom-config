@@ -16,7 +16,8 @@ jobs:
         uses: actions/checkout@v2
       - name: Scan CloudFormation Templates
         run: |
-          gem install cfn-nag
+          #gem install cfn-nag
+          brew gem install cfn-nag
           cfn_nag_scan --input-path=configuration/templates
 
   Upload:

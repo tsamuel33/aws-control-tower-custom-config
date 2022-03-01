@@ -1,0 +1,300 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Manages AWS CloudWatch Log Filters and Alarms
+
+Parameters:
+  OrgID:
+    Type: 'String'
+    Description: >
+      The Amazon Organizations ID for AWS Landing Zone.
+    AllowedPattern: '^o-[a-z0-9]{10,32}$'
+    ConstraintDescription: 'Requires o- followed by from 10 to 32 lower-case letters or digits.'
+  OrgMasterAccountId:
+    Type: 'String'
+    MinLength: 12
+    MaxLength: 12
+    Description: >
+      The AccountId for the Master AWS Organizations Account.
+  SecurityAccountId:
+    Type: 'String'
+    MinLength: 12
+    MaxLength: 12
+    Description: >
+      The AccountId for the Core Security in AWS Organizations Landing Zone.
+  SharedServicesAccountId:
+    Type: 'String'
+    MinLength: 12
+    MaxLength: 12
+    Description: >
+      The AccountId for the Core Shared Services in AWS Organizations Landing Zone.
+  LogArchiveAccountId:
+    Type: 'String'
+    MinLength: 12
+    MaxLength: 12
+    Description: >
+      The AccountId for the Core Log Archive in AWS Organizations Landing Zone.
+  ServerSideEncryptionAlgorithm:
+    Type: 'String'
+    Default: 'aws:kms'
+    Description: >
+      The encryption algorithm used for S3 server-side encryption.
+    AllowedValues:
+    - 'aws:kms'
+  AppId:
+    Type: 'String'
+    MinLength: 7
+    MaxLength: 38
+    AllowedPattern: '^[a-z0-9]{3,30}-(dev|test|staging|prod)$'
+    ConstraintDescription: 'Must contain from 3 to 30 lower-case letters or digits followed by a hyphen and dev, test, staging, or prod.'
+  AppEnvironment:
+    Type: 'String'
+    AllowedValues:
+    - dev
+    - test
+    - staging
+    - prod
+  AppDefaultVpcId:
+    Type: 'String'
+    Description: The VPC ID where to run the application.
+  AlarmNotificationTopicName:
+    Description: The name of the local security topic on the account.
+    Default: 'aws-controltower-SecurityNotifications'
+    Type: String
+  CloudTrailLogGroupName:
+    Description: Name of the local security notification log group.
+    Default: 'aws-controltower/CloudTrailLogs'
+    Type: String
+  GuardDutyLogGroupName:
+    Description: The name of log group for AWS GuardDuty
+    Default: 'ManagedSecurityPipeline/GuardDuty'
+    Type: String
+  GuardDutyLogRetentionInDays:
+    Description: The number of days to retain GuardDuty logs
+    Type: Number
+    Default: 3653
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653]
+
+Conditions:
+  isDev: !Equals [!Ref 'AppEnvironment', 'dev']
+  isTest: !Equals [!Ref 'AppEnvironment', 'test']
+  isStaging: !Equals [!Ref 'AppEnvironment', 'staging']
+  isProd: !Equals [!Ref 'AppEnvironment', 'prod']
+
+Resources:
+  #
+  # CloudWatch Log Group for GuardDuty events
+  #
+  GuardDutyLogGroup:
+    Type: 'AWS::Logs::LogGroup'
+    Properties:
+      LogGroupName: !Ref GuardDutyLogGroupName
+      RetentionInDays: !Ref GuardDutyLogRetentionInDays
+
+  GuardDutyLogGroupPolicy:
+    Type: AWS::Logs::ResourcePolicy
+    Properties:
+      PolicyName: GuardDutyLogGroupPolicy
+      PolicyDocument:
+        Fn::Sub:
+        - |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Service": "events.amazonaws.com"
+                },
+                "Action": [
+                  "logs:CreateLogStream",
+                  "logs:PutLogEvents"
+                ],
+                "Resource": [
+                  "${logArn}"
+                ]
+              }
+            ]
+          }
+        - { logArn: !GetAtt GuardDutyLogGroup.Arn }
+
+  #
+  # Forward GuardDuty events to CloudWatch logs
+  #
+
+  GuardDutyFindingEventLogRule:
+    Type: AWS::Events::Rule
+    DependsOn:
+    - GuardDutyLogGroup
+    Properties:
+      Name: Infosec-GuardDuty-Finding
+      Description: 'Send GuardDuty findings to a log group'
+      EventPattern:
+        {
+          "source": [
+            "aws.guardduty"
+          ],
+          "detail-type": [
+            "GuardDuty Finding"
+          ]
+        }
+      State: ENABLED
+      Targets:
+      - Id: 'GuardDutyFindingEventTargetCloudWatch'
+        Arn: !GetAtt GuardDutyLogGroup.Arn
+
+  # ----------------------------------------------------
+  # Detects logs with error and reports them as a metric
+  # ----------------------------------------------------
+  CloudTrailLogsWithErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: CloudTrail Logs contain errors
+      AlarmDescription: Alarm if a cloud trail log contains an error message
+      MetricName: ErrorLogCount
+      Namespace: CloudTrailMetrics
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: '1'
+      Threshold: 1
+      TreatMissingData: notBreaching
+      # AlarmActions:
+      #  - !Sub arn:aws:sns:us-east-1:${AWS::AccountId}:${AlarmNotificationTopicName}
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+  CloudTrailLogsWithErrorsFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CloudTrailLogGroupName
+      FilterPattern: |-
+        {
+          ($.errorCode != "") ||
+          ($.errorCode = "AccessDenied*")
+        }
+      MetricTransformations:
+      - MetricValue: '1'
+        MetricNamespace: CloudTrailMetrics
+        MetricName: ErrorLogCount
+
+  #
+  # Detects access via AWS Management Console
+  #
+
+  CloudTrailConsoleLoginAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: InfoSec - AWS Management Console Login
+      AlarmDescription: Detects access via AWS Management Console
+      MetricName: ConsoleLoginCount
+      Namespace: CloudTrailMetrics
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: '1'
+      Threshold: 1
+      TreatMissingData: notBreaching
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+  CloudTrailConsoleLoginFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CloudTrailLogGroupName
+      FilterPattern: |-
+        {
+          (($.eventName = "SwitchRole") && ($.eventType = "AwsConsoleSignIn")) ||
+          (($.eventName = "ConsoleLogin") && ($.eventType = "AwsConsoleSignIn")) ||
+          (($.eventType = "AwsConsoleSignIn"))
+        }
+      MetricTransformations:
+      - MetricValue: '1'
+        MetricNamespace: CloudTrailMetrics
+        MetricName: ConsoleLoginCount
+
+  #
+  # Detects role assumptions by non-service identities, i.e. users
+  #
+  CloudTrailRoleAssumptionAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: InfoSec - Role Assumption by Users
+      AlarmDescription: Detects role assumptions by non-service identities
+      MetricName: RoleAssumptionCount
+      Namespace: CloudTrailMetrics
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: '1'
+      Threshold: 1
+      TreatMissingData: notBreaching
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+  CloudTrailRoleAssumptionFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CloudTrailLogGroupName
+      FilterPattern: |-
+        {
+          ($.eventName = "AssumeRole") &&
+          ($.requestParameters.roleSessionName = "*@*")
+        }
+      MetricTransformations:
+      - MetricValue: '1'
+        MetricNamespace: CloudTrailMetrics
+        MetricName: RoleAssumptionCount
+
+  #
+  # Detects User Activity from External Networks
+  #
+  CloudTrailUserExternalActivityAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: InfoSec - User Activity from External Networks
+      AlarmDescription: Detects User Activity from External Networks
+      MetricName: UserExternalActivityCount
+      Namespace: CloudTrailMetrics
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: '1'
+      Threshold: 1
+      TreatMissingData: notBreaching
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+  CloudTrailUserExternalActivityFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CloudTrailLogGroupName
+      FilterPattern: |-
+        {
+          ($.userIdentity.principalId = "*@*") &&
+          ($.sourceIPAddress != "74.117.13*") &&
+          ($.sourceIPAddress != "*com*")
+        }
+      MetricTransformations:
+      - MetricValue: '1'
+        MetricNamespace: CloudTrailMetrics
+        MetricName: UserExternalActivityCount
+
+  #
+  # Detects User Logins from External Networks
+  #
+  CloudTrailUserExternalLoginAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: InfoSec - User Login from External Networks
+      AlarmDescription: Detects User Logins from External Networks
+      MetricName: UserExternalLoginCount
+      Namespace: CloudTrailMetrics
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: '1'
+      Threshold: 1
+      TreatMissingData: notBreaching
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+  CloudTrailUserExternalLoginFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref CloudTrailLogGroupName
+      FilterPattern: |-
+        {
+          ($.userIdentity.principalId = "*@*") &&
+          ($.sourceIPAddress != "74.117.13*") &&
+          ($.sourceIPAddress != "*com*") &&
+          ($.eventName = "AssumeRole*")
+        }
+      MetricTransformations:
+      - MetricValue: '1'
+        MetricNamespace: CloudTrailMetrics
+        MetricName: UserExternalLoginCount

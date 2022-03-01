@@ -1,0 +1,268 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Manages IAM Roles and Policies
+
+Parameters:
+  OrgID:
+    Type: 'String'
+    Description: >
+      The Amazon Organizations ID for AWS Landing Zone.
+    AllowedPattern: '^o-[a-z0-9]{10,32}$'
+    ConstraintDescription: 'Requires o- followed by from 10 to 32 lower-case letters or digits.'
+  OrgMasterAccountId:
+    Type: 'String'
+    MinLength: 12
+    MaxLength: 12
+    Description: >
+      The AccountId for the Master AWS Organizations Account.
+  SecurityAccountId:
+    Type: 'String'
+    MinLength: 12
+    MaxLength: 12
+    Description: >
+      The AccountId for the Core Security in AWS Organizations Landing Zone.
+  SharedServicesAccountId:
+    Type: 'String'
+    MinLength: 12
+    MaxLength: 12
+    Description: >
+      The AccountId for the Core Shared Services in AWS Organizations Landing Zone.
+  LogArchiveAccountId:
+    Type: 'String'
+    MinLength: 12
+    MaxLength: 12
+    Description: >
+      The AccountId for the Core Log Archive in AWS Organizations Landing Zone.
+  ServerSideEncryptionAlgorithm:
+    Type: 'String'
+    Default: 'aws:kms'
+    Description: >
+      The encryption algorithm used for S3 server-side encryption.
+    AllowedValues:
+      - 'aws:kms'
+  AppId:
+    Type: 'String'
+    MinLength: 7
+    MaxLength: 38
+    AllowedPattern: '^[a-z0-9]{3,30}-(dev|test|staging|prod)$'
+    ConstraintDescription: 'Must contain from 3 to 30 lower-case letters or digits followed by a hyphen and dev, test, staging, or prod.'
+  AppEnvironment:
+    Type: 'String'
+    AllowedValues:
+      - dev
+      - test
+      - staging
+      - prod
+  AppDefaultVpcId:
+    Type: 'String'
+    Description: The VPC ID where to run the application.
+
+Mappings:
+  GitHubActionsAppDeploy:
+    dev:
+      RepoName: "security-pipeline-baseline"
+      Branch: "dev"
+    test:
+      RepoName: "TBD"
+      Branch: "test"
+    staging:
+      RepoName: "TBD"
+      Branch: "staging"
+    prod:
+      RepoName: "security-pipeline-baseline"
+      Branch: "main"
+
+Conditions:
+  isDev: !Equals [!Ref 'AppEnvironment', 'dev']
+  isTest: !Equals [!Ref 'AppEnvironment', 'test']
+  isStaging: !Equals [!Ref 'AppEnvironment', 'staging']
+  isProd: !Equals [!Ref 'AppEnvironment', 'prod']
+  GAAppDeployReady: !Not [!Equals [!FindInMap [GitHubActionsAppDeploy, !Ref AppEnvironment, RepoName], "TBD"]]
+
+Resources:
+  CloudFormationReadOnlyRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: 'CloudFormationReadOnlyRole'
+      Description: Cloud Formation Read-Only Role
+      Path: '/managed/'
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated:
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:saml-provider/ADFS'
+            Action: 'sts:AssumeRoleWithSAML'
+            Condition:
+              StringEquals:
+                'SAML:aud': 'https://signin.aws.amazon.com/saml'
+      Tags:
+        - Key: "secops:tags:managed_by"
+          Value: "AWS Managed Security Pipeline"
+
+  CloudFormationReadOnlyPolicy:
+    Type: 'AWS::IAM::Policy'
+    Properties:
+      PolicyName: CloudFormationReadOnlyPolicy
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'cloudformation:Describe*'
+              - 'cloudformation:List*'
+              - 'cloudformation:Get*'
+            Resource: '*'
+      Roles:
+        - !Ref CloudFormationReadOnlyRole
+
+  #
+  # Add to Managed Security Pipeline Permissions
+  # Redundant example permission listed below. Update with new permissions as needed.
+  #
+
+  AddonGALocalSecurityPipelineStackExecutionRolePolicy:
+    Type: 'AWS::IAM::ManagedPolicy'
+    Properties:
+      ManagedPolicyName: AddonGALocalSecurityPipelineStackExecutionRolePolicy
+      Description: 'Addon policy for GALocalSecurityPipelineStackExecutionRole'
+      Path: '/managed/'
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: "AllowIAMFullAccess"
+            Effect: Allow
+            Action:
+              - "iam:ListRoles"
+            Resource: '*'
+      Roles:
+        - 'GALocalSecurityPipelineStackExecutionRole'
+
+  #
+  # GitHub Actions App Deployment Roles
+  #
+
+  GAAppDeployPipelineStackManagementRole:
+    Type: AWS::IAM::Role
+    Condition: GAAppDeployReady
+    Properties:
+      RoleName: GAAppDeployPipelineStackManagementRole
+      Description: GitHub Actions role to deploy application resources via CloudFormation
+      Path: /app/
+      AssumeRolePolicyDocument:
+        Fn::Sub:
+        - |
+          {
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Principal": {
+                  "Federated": "${OIDCArn}"
+                },
+                "Action": "sts:AssumeRoleWithWebIdentity",
+                "Condition": {
+                  "StringEquals": {
+                    "token.actions.githubusercontent.com:sub": "repo:${OrgName}/${RepoName}:ref:refs/heads/${Branch}"
+                  }
+                }
+              }
+            ]
+          }
+        - OIDCArn: !ImportValue GitHubActionsOIDCArn
+          OrgName: 'nzmindthoughts'
+          RepoName: !FindInMap [ GitHubActionsAppDeploy, !Ref AppEnvironment, RepoName ]
+          Branch: !FindInMap [ GitHubActionsAppDeploy, !Ref AppEnvironment, Branch ]
+      Policies:
+        - PolicyName: GAAppDeployPipelineStackManagementRole
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:DeleteStack
+                  - cloudformation:DescribeStacks
+                  - cloudformation:UpdateStack
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:SetStackPolicy
+                  - cloudformation:ValidateTemplate
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:cloudformation:*:${AWS::AccountId}:stack/app-pipeline-*/*"
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt GAAppDeployPipelineStackExecutionRole.Arn
+              - Effect: Allow
+                Action: s3:ListAllMyBuckets
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:GetObjectTagging
+                  - s3:GetObjectVersion
+                  - s3:GetObjectVersionTagging
+                  - s3:GetObjectAcl
+                  - s3:GetObjectVersionAcl
+                  - s3:PutObjectTagging
+                  - s3:PutObjectVersionTagging
+                  - s3:PutObjectAcl
+                  - s3:PutObjectVersionAcl
+                Resource:
+                  - "arn:aws:s3:::cf-templates*"
+                  - "arn:aws:s3:::cf-templates*/*"
+              - Effect: Allow
+                Action:
+                  - kms:Encrypt
+                  - kms:Decrypt
+                  - kms:ReEncryptTo
+                  - kms:ReEncryptFrom
+                  - kms:GenerateDataKey
+                  - kms:GenerateDataKeyWithoutPlaintext
+                  - kms:DescribeKey
+                Resource: !ImportValue GeneralPurposeEncryptionKeyArn
+      Tags:
+        - Key: "secops:tags:managed_by"
+          Value: "AWS Managed Security Pipeline"
+
+  #
+  # Basic permissions included on CF role below. Update as required for your application.
+  #
+
+  GAAppDeployPipelineStackExecutionRole:
+    Type: AWS::IAM::Role
+    Condition: GAAppDeployReady
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      Description: CloudFormation role used to deploy application resources
+      Path: /app/
+      RoleName: GAAppDeployPipelineStackExecutionRole
+      Policies:
+        - PolicyName: CloudFormationActions
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - kms:Encrypt
+                  - kms:Decrypt
+                  - kms:ReEncryptTo
+                  - kms:ReEncryptFrom
+                  - kms:GenerateDataKey
+                  - kms:GenerateDataKeyWithoutPlaintext
+                  - kms:DescribeKey
+                Resource: !ImportValue GeneralPurposeEncryptionKeyArn
+      Tags:
+        - Key: "secops:tags:managed_by"
+          Value: "AWS Managed Security Pipeline"

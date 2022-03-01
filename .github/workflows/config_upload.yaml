@@ -3,15 +3,25 @@ on:
   push:
     paths:
       - 'configuration/**'
-    branches:
-      - main
 
 permissions:
   contents: read
   id-token: write
 
 jobs:
+  Test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Scan CloudFormation Templates
+        run: |
+          sudo gem install cfn-nag
+          cfn_nag_scan --input-path=configuration/templates
+
   Upload:
+    needs: Test
+    if: github.ref_name == 'main'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

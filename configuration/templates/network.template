@@ -84,7 +84,7 @@ Resources:
         Value: !Ref 'AppEnvironment'
       - Key: 'ApplicationID'
         Value: !Ref 'AppId'
-  AllowOutboundTrafficToLoopback:
+  # AllowOutboundTrafficToLoopback:
     # Type: 'AWS::EC2::SecurityGroupEgress'
     # Condition: isDefaultVpcReady
     # DependsOn: DefaultSecurityGroup

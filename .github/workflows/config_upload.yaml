@@ -1,8 +1,8 @@
 name: Upload Custom Control Tower Config to S3
 on:
   push:
-    paths:
-      - 'configuration/**'
+    # paths:
+    #   - 'configuration/**'
 
 permissions:
   contents: read
@@ -14,9 +14,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v2
-      - name: Scan CloudFormation Templates
+      - name: Install cfn_nag
         run: |
           sudo gem install cfn-nag
+      - name: Scan CloudFormation Templates
+        run: |
           cfn_nag_scan --input-path=configuration/templates
 
   Upload:

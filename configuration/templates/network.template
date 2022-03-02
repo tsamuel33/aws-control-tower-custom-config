@@ -85,14 +85,14 @@ Resources:
       - Key: 'ApplicationID'
         Value: !Ref 'AppId'
   AllowOutboundTrafficToLoopback:
-    Type: 'AWS::EC2::SecurityGroupEgress'
-    Condition: isDefaultVpcReady
-    DependsOn: DefaultSecurityGroup
-    Properties:
-      GroupId: !Ref DefaultSecurityGroup
-      CidrIp: 127.0.0.1/32
-      IpProtocol: -1
-      Description: 'Allow outbound traffic to Loopback address only'
+    # Type: 'AWS::EC2::SecurityGroupEgress'
+    # Condition: isDefaultVpcReady
+    # DependsOn: DefaultSecurityGroup
+    # Properties:
+    #   GroupId: !Ref DefaultSecurityGroup
+    #   CidrIp: 127.0.0.1/32
+    #   IpProtocol: -1
+    #   Description: 'Allow outbound traffic to Loopback address only'
   AllowInboundTrafficFromLoopback:
     Type: 'AWS::EC2::SecurityGroupIngress'
     Condition: isDefaultVpcReady
